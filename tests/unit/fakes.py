@@ -12,7 +12,6 @@ import numpy as np
 
 from voxout.config import OUTPUT_SAMPLE_RATE
 from voxout.synth import Segment
-from voxout.textmatch import han_only
 
 # 自相关峰值落在整数延迟格上，Hann 窗又让自相关随延迟衰减，峰值被拉向短一格：
 # 200 Hz 的理论延迟 240 → 实取 239 → 48000/239 = 200.84。偏差上界约 1/延迟
@@ -21,8 +20,13 @@ from voxout.textmatch import han_only
 P10_OF_200HZ = 48000 / 239
 P10_OF_250HZ = 48000 / 191
 
-_FAKE_SECONDS_PER_HAN = 0.3
-"""与 config.SECONDS_PER_HAN_ESTIMATE 同量级，让替身产出的 manifest 数字可信。"""
+FAKE_SEGMENT_SECONDS = 0.6
+"""替身每次调用产出的固定时长。
+
+**刻意不与文本长度成正比**：切段测试要送 900+ 汉字，按 0.3 秒/汉字算出来的
+音频会让 p10_f0 内部那次 rfft 分配数百 MB。而「时长与汉字数成正比」这件事
+本来也不该由替身来验——真实速率是 T13 在真实模型上测的。
+"""
 
 
 def sine(
@@ -103,7 +107,7 @@ class FakeSynthesizer:
                 "max_tokens": max_tokens,
             }
         )
-        seconds = max(_FAKE_SECONDS_PER_HAN * len(han_only(text)), 0.5)
+        seconds = FAKE_SEGMENT_SECONDS
         audio = sine(self.freq, seconds, self._sample_rate)
         return Segment(
             audio=audio,
