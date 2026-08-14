@@ -4,50 +4,18 @@
 所以这些测试重点盯两件事——阈值判定正确，以及**判定本身可复现**。
 """
 
-from dataclasses import FrozenInstanceError, dataclass
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import numpy as np
 import pytest
+from fakes import P10_OF_200HZ, P10_OF_250HZ, RecordingTranscriber, sine
 
 from voxout import normalize, wavio
 from voxout.config import COVERAGE_MIN, OUTPUT_SAMPLE_RATE, VOICE_DRIFT_MAX_PCT
 from voxout.verify import ContentGate, VoiceGate, check_content, check_voice
 
 THREE_SENTENCES = "第一段内容。第二段内容。第三段内容。"
-
-# 自相关峰值落在整数延迟格上，Hann 窗又让自相关随延迟衰减，峰值被拉向短一格：
-# 200 Hz 的理论延迟 240 → 实取 239 → 48000/239 = 200.84。偏差上界约 1/延迟
-# （本频段 0.4–0.6%），是系统性的，而真实基线由同一函数在真实音频上测得，
-# 所以在闸门里同偏同消。这里用实测值而非标称值，才能把「零漂移」测成真正的零。
-P10_OF_200HZ = 48000 / 239
-P10_OF_250HZ = 48000 / 191
-
-
-def sine(freq: float = 200.0, seconds: float = 2.0, sr: int = OUTPUT_SAMPLE_RATE) -> np.ndarray:
-    t = np.arange(int(sr * seconds)) / sr
-    return (0.5 * np.sin(2 * np.pi * freq * t)).astype(np.float32)
-
-
-@dataclass(frozen=True)
-class FakeTranscription:
-    text: str
-
-
-class RecordingTranscriber:
-    """替身：回一段固定文本，并记录自己被怎么调用的。
-
-    记录调用参数不是多余的——闸门的可复现性完全取决于 language 与 temperature
-    有没有被显式传进去，那是行为的一部分，必须被测试盯住。
-    """
-
-    def __init__(self, text: str) -> None:
-        self._text = text
-        self.calls: list[tuple[str, dict[str, object]]] = []
-
-    def generate(self, audio: str, **kwargs: object) -> FakeTranscription:
-        self.calls.append((audio, kwargs))
-        return FakeTranscription(text=self._text)
 
 
 @pytest.fixture
