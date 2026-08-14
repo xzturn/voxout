@@ -32,8 +32,18 @@ print("代码块不该被读出来")
 """
 
 
-LONG_MARKDOWN = "这是一段测试内容。" * 120
-"""960 汉字，超过 900 的切段阈值 → 两段。"""
+MULTI_PARAGRAPH_MARKDOWN = """# 标题文字要读
+
+第一自然段的内容。
+
+第二自然段的内容。
+"""
+"""标题 + 两个自然段 → 三次生成。
+
+多段不再靠文本长度制造，靠段落数：段落是原子单位（chunker 模块文档，T13 实测）。
+这个夹具因此同时钉住 markdown 清洗必须把空行折成 `\\n` 而不是抹平——段落界一丢，
+切段就退回 T13 那次跳读失败的行为。
+"""
 
 
 def spoken_of(md: str) -> str:
@@ -196,22 +206,27 @@ class TestTextPreparation:
         assert "1200" not in sent
         assert "一千二百" in sent
 
-    def test_long_text_is_chunked_and_the_gaps_are_in_the_audio(
+    def test_each_paragraph_becomes_its_own_generation_with_gaps_between_them(
         self, tmp_path: Path, profile: VoiceProfile
     ) -> None:
-        """超过 900 汉字要切段。切了段就必须在成品里看到段间静音。"""
-        path = tmp_path / "长文.md"
-        path.write_text(LONG_MARKDOWN, encoding="utf-8")
+        """一次生成一个段落，n 段之间留 n-1 段静音。
+
+        段数在这里是写死的 3（标题 + 两个自然段），因为「段落是原子单位」这条
+        结论本身就是一个计数断言：合并任意两段都会让它变成 2。T13 实测里 213 汉字
+        单段送出的覆盖率是 55.40%，切到段落级是 99.06%。
+        """
+        path = tmp_path / "多段.md"
+        path.write_text(MULTI_PARAGRAPH_MARKDOWN, encoding="utf-8")
         synthesizer = FakeSynthesizer()
 
-        result = render(path, profile, synthesizer, perfect_ear(LONG_MARKDOWN))
+        result = render(path, profile, synthesizer, perfect_ear(MULTI_PARAGRAPH_MARKDOWN))
 
-        assert len(synthesizer.calls) == 2
+        assert len(synthesizer.calls) == 3
         assert result.manifest is not None
-        assert result.manifest["segments"] == 2
-        gap = CHUNK_GAP_SECONDS
+        assert result.manifest["segments"] == 3
+        gaps = 2 * CHUNK_GAP_SECONDS
         assert result.manifest["audio_seconds"] == pytest.approx(
-            result.manifest["speech_seconds"] + gap, abs=1e-3
+            result.manifest["speech_seconds"] + gaps, abs=1e-3
         )
 
 
@@ -224,13 +239,13 @@ class TestAnchorWiring:
         零样本模式下同一段文本两次调用的 p10 F0 极差 53.9%——远超闸门 2 的
         6% 余量，但闸门只看漂移不看**为什么**漂移，所以这条必须在这里钉住。
         """
-        path = tmp_path / "长文.md"
-        path.write_text(LONG_MARKDOWN, encoding="utf-8")
+        path = tmp_path / "多段.md"
+        path.write_text(MULTI_PARAGRAPH_MARKDOWN, encoding="utf-8")
         synthesizer = FakeSynthesizer()
 
-        render(path, profile, synthesizer, perfect_ear(LONG_MARKDOWN))
+        render(path, profile, synthesizer, perfect_ear(MULTI_PARAGRAPH_MARKDOWN))
 
-        assert len(synthesizer.calls) == 2
+        assert len(synthesizer.calls) > 1, "多段才谈得上「每段都带锚点」"
         for call in synthesizer.calls:
             assert call["ref_audio"] == profile.anchor_wav
             assert call["ref_text"] == profile.anchor_text

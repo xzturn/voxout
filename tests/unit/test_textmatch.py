@@ -49,3 +49,43 @@ def test_missing_spans_is_empty_when_nothing_is_missing() -> None:
 def test_missing_spans_ignores_non_han_noise_in_heard() -> None:
     """听到侧多出的标点不算缺失——缺失只针对参考侧的字。"""
     assert missing_spans("一二三", "一，二。三！") == ()
+
+
+class TestOrthographicVariance:
+    """繁简是同一个字的两种写法，不是内容丢失。
+
+    Whisper-zh 对同一段音频有时写简体、有时写繁体，同一次渲染里两种混着出现。
+    T13 实测（帖2，12 段，同一批音频只换比较口径）：
+
+        裸比较              89.44%
+        + 数字双侧归一化    95.37%
+        + 繁转简            97.59%   ← 单段最低那段从 61.76% 升到 97.06%
+
+    音频一个字没变，升的那 2.2 个百分点全是度量假象。这跟数字归一化是同一条原则：
+    正字法差异必须在比较口径里消掉，否则闸门量的是 ASR 的书写偏好而不是内容。
+    """
+
+    def test_a_traditional_transcription_of_simplified_text_is_full_coverage(self) -> None:
+        assert coverage("留意波动，把控制权拿回来", "留意波動，把控制權拿回來") == 1.0
+
+    def test_a_simplified_transcription_of_traditional_text_is_full_coverage(self) -> None:
+        """两侧都要归一，不是只修听到侧——比较的是等价类，方向不该有特权。"""
+        assert coverage("留意波動，把控制權拿回來", "留意波动，把控制权拿回来") == 1.0
+
+    def test_traditional_variants_do_not_show_up_as_missing_spans(self) -> None:
+        """差异报告是人判断「真丢了还是听错了」的唯一依据。繁体写法列在缺失片段里，
+        人会以为内容没念出来，而实际上音频是完整的。"""
+        assert missing_spans("把控制权拿回来", "把控制權拿回來") == ()
+
+    def test_real_content_loss_still_shows_up_through_the_canonicalisation(self) -> None:
+        """正控制：归一化不许把真的丢字也一起抹平。"""
+        assert missing_spans("留意波动，把控制权拿回来", "留意波動") == ((4, "把控制权拿回来"),)
+
+    def test_canonicalisation_leaves_simplified_text_alone(self) -> None:
+        """简体输入必须恒等——`missing_spans` 的下标是归一化后参考串里的下标，
+        而差异报告printing 的是**未**归一化的朗读文本。两者长度一旦不同，报告里的
+        位置就会错位到别的字上。实测两篇真实短帖（213 / 540 汉字）皆恒等。
+        """
+        text = "体检数字和诊断需要认真对待，我们常顺手把一次测量翻译成结论。"
+        assert missing_spans(text, text) == ()
+        assert coverage(text, text) == 1.0

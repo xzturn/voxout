@@ -14,9 +14,9 @@ def test_coverage_threshold_is_a_fraction() -> None:
 def test_chunk_threshold_fits_inside_the_token_budget() -> None:
     """切段阈值必须落在 token 预算之内，否则两个防截断机制互相矛盾。
 
-    一个刚好不触发切段的文本（900 汉字），其推算音频时长必须还在 token 预算能
-    覆盖的范围里。否则会出现「不切段 + 预算不足」的死角，而这正是闸门 1 存在
-    要防的那个失败模式。
+    一个刚好不触发切段的段落（`CHUNK_THRESHOLD_HAN` 汉字），其推算音频时长必须
+    还在 token 预算能覆盖的范围里。否则会出现「不切段 + 预算不足」的死角，而这
+    正是闸门 1 存在要防的那个失败模式。
     """
     longest_unchunked_seconds = config.CHUNK_THRESHOLD_HAN * config.SECONDS_PER_HAN_ESTIMATE
     budget_seconds = config.MAX_TOKENS_CAP * config.SECONDS_PER_PATCH_NOMINAL
