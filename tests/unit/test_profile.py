@@ -135,6 +135,13 @@ class TestValidationFailures:
         with pytest.raises(FileNotFoundError, match="mint-voice"):
             load_profile("house", root=tmp_path)
 
+    def test_missing_profile_toml_names_the_mint_command(self, tmp_path: Path) -> None:
+        """没有元数据就没有基线，闸门 2 失去参照——不能退化成「只看段间极差」。"""
+        (make_profile_dir(tmp_path) / "profile.toml").unlink()
+
+        with pytest.raises(FileNotFoundError, match="mint-voice"):
+            load_profile("house", root=tmp_path)
+
     def test_missing_anchor_text_names_the_mint_command(self, tmp_path: Path) -> None:
         make_profile_dir(tmp_path)
         (tmp_path / "house" / "anchor.txt").unlink()
@@ -337,18 +344,36 @@ class TestBaselineIsMeasuredOnConditionedGenerations:
         """半个档案比没有档案更糟：load 会通过一部分校验然后在别处炸。
 
         模拟写盘中途失败（磁盘满、权限），确认目录被回收而不是留下残骸。
+
+        必须放过**第一次** `wavio.write`：那一次写的是临时目录里的暂存锚点
+        （`mint_profile` 用它当参考音去测基线），发生在正式目录建立之前。
+        一律失败的替身会停在那里，正式目录根本没建过——断言「目录不存在」照样
+        通过，但清理路径一行都没跑到。测试于是能在清理逻辑被删掉之后依然全绿。
+
+        末态无法区分「清理跑了」和「压根没建」，所以这里在**失败当刻**观察一次
+        目录是否存在，用中间态把两者分开。
         """
         import voxout.profile as profile_module
 
-        def fail_after_wav(*_args: object, **_kwargs: object) -> None:
+        real_write = profile_module.wavio.write
+        directory = tmp_path / "house"
+        observed: list[bool] = []
+
+        def fail_on_the_profile_write(path: Path, *args: object, **kwargs: object) -> None:
+            if not observed:  # 第一次 = 临时目录里的暂存锚点，放过
+                observed.append(directory.exists())
+                real_write(path, *args, **kwargs)
+                return
+            observed.append(directory.exists())
             raise OSError("模拟磁盘写入失败")
 
-        monkeypatch.setattr(profile_module.wavio, "write", fail_after_wav)
+        monkeypatch.setattr(profile_module.wavio, "write", fail_on_the_profile_write)
 
         with pytest.raises(OSError):
             mint_profile("house", ANCHOR_TEXT, FakeSynthesizer(sine()), seed=42, root=tmp_path)
 
-        assert not (tmp_path / "house").exists()
+        assert observed == [False, True], "第二次写必须发生在正式目录建立之后"
+        assert not directory.exists()
 
 
 def test_voice_profile_can_be_constructed_directly() -> None:

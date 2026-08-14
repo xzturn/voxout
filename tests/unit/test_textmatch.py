@@ -46,6 +46,12 @@ def test_missing_spans_is_empty_when_nothing_is_missing() -> None:
     assert missing_spans("一二三", "一二三") == ()
 
 
+def test_missing_spans_of_an_empty_reference_is_empty() -> None:
+    """参考侧无字可丢。差异报告要能在这种输入上照常生成，而不是崩在生成报告的路上
+    ——闸门 1 失败时才写报告，此时管线已经失败一次了。"""
+    assert missing_spans("", "听到了一些东西") == ()
+
+
 def test_missing_spans_ignores_non_han_noise_in_heard() -> None:
     """听到侧多出的标点不算缺失——缺失只针对参考侧的字。"""
     assert missing_spans("一二三", "一，二。三！") == ()

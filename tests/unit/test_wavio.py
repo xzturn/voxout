@@ -67,6 +67,25 @@ def test_reading_stereo_is_refused(tmp_path: Path) -> None:
         wavio.read(path)
 
 
+def test_reading_non_16bit_is_refused(tmp_path: Path) -> None:
+    """猜位宽会把 8-bit 的样本按 int16 解释，得到的波形与音色度量全是噪声。"""
+    path = tmp_path / "eight_bit.wav"
+    with wave.open(str(path), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(1)
+        handle.setframerate(48000)
+        handle.writeframes(bytes(2000))
+
+    with pytest.raises(ValueError, match="16-bit"):
+        wavio.read(path)
+
+
+def test_writing_multi_channel_shape_is_refused(tmp_path: Path) -> None:
+    """(n, 2) 形状被 tobytes 展平后会写成两倍长的单声道，听起来是加速的乱音。"""
+    with pytest.raises(ValueError, match="一维"):
+        wavio.write(tmp_path / "a.wav", np.zeros((100, 2), dtype=np.float32), 48000)
+
+
 def test_writing_non_finite_samples_is_refused(tmp_path: Path) -> None:
     """nan/inf 转 int16 的结果由平台决定，静默写出会得到无法解释的音频。"""
     with pytest.raises(ValueError, match="有限"):

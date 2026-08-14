@@ -32,6 +32,14 @@ class TestFrames:
         expected = 1 + (96000 - config.FRAME) // config.HOP
         assert frames_of(signal).shape == (expected, config.FRAME)
 
+    def test_stereo_or_batched_input_is_refused(self) -> None:
+        """二维输入会被当成「一帧很长的信号」而静默算出一个无意义的 F0。
+
+        度量是闸门 2 的唯一信息源，在这里明确失败比往下传一个数安全。
+        """
+        with pytest.raises(ValueError, match="单声道"):
+            frames_of(np.zeros((2, 4800), dtype=np.float32))
+
     def test_signal_shorter_than_one_frame_still_yields_one_frame(self) -> None:
         assert frames_of(sine(200.0, seconds=0.01)).shape[0] == 1
 
@@ -93,6 +101,17 @@ class TestLtasAndCosine:
         不是音高的指纹。所以闸门 2 以 p10 F0 为判据，LTAS 只作旁证。
         """
         assert cosine(ltas(sine(200.0), SR), ltas(sine(250.0), SR)) > 0.9
+
+    def test_a_constant_spectrum_yields_nan_not_perfect_similarity(self) -> None:
+        """去均值后方差为 0，相关性在此处无定义。
+
+        这个分支的存在理由是它的**替代品有多坏**：返回 1.0 等于告诉闸门
+        「两段音色完全一致」，而输入其实是一段没有任何频谱结构的退化信号
+        （全静音、直流）。断言 nan 是为了把这条挡住的路钉住。
+        """
+        flat = np.ones(64, dtype=np.float32)
+        assert np.isnan(cosine(flat, flat))
+        assert np.isnan(cosine(flat, np.arange(64, dtype=np.float32)))
 
     def test_spectrum_is_truncated_to_the_configured_ceiling(self) -> None:
         expected_bins = int(config.LTAS_MAX_HZ / (SR / config.FRAME))
