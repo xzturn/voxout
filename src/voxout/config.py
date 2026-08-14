@@ -66,6 +66,11 @@ MAX_TOKENS_CAP = 4000
 CHUNK_GAP_SECONDS = 0.2
 """多段拼接时的段间静音。需人工听审确认（docs/listening-review.md）。"""
 
+ANCHOR_TEXT_DEFAULT = "这是一段用来测试音色是否稳定的中文句子。"
+"""铸造音色时的默认锚点文本。设计 §4 的全部探测都用这一句，其 bit 级可复现性
+已实测。换一句就要重新标定闸门 2 的标尺（0.9% / 3.4% / 53.9%），所以默认值
+必须是那一句。"""
+
 # ---------- 路径 ----------
 
 VOICE_ROOT = Path.home() / "Life OS/60-69 Content Production/68 Writing Assets/voice"
