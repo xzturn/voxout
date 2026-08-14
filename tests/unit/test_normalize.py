@@ -91,3 +91,35 @@ def test_conversion_failure_falls_back_loudly(
 
     assert "122" in result, "回退必须保留原始内容，不能丢字"
     assert any("cn2an" in r.message for r in caplog.records), "失败必须留下告警"
+
+
+class TestCheckedVariantReportsOutcome:
+    """闸门 1 需要知道归一化到底成没成功。
+
+    只写日志不够：日志给人看，而闸门要把这件事写进报告，让人区分
+    「内容真的丢了」和「比较用的工具坏了」。
+    """
+
+    def test_success_is_reported(self) -> None:
+        text, ok = normalize.to_speakable_numbers_checked("第 122 天")
+
+        assert text == "第一百二十二天"
+        assert ok is True
+
+    def test_failure_is_reported_and_pre_rule_text_is_returned(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def boom(*_args: object, **_kwargs: object) -> str:
+            raise RuntimeError("模拟 cn2an 内部失败")
+
+        monkeypatch.setattr(normalize.cn2an, "transform", boom)
+        text, ok = normalize.to_speakable_numbers_checked("1,200 元")
+
+        assert ok is False
+        assert text == "1200 元", "千分位等前置规则仍应生效，只是没做中文化"
+
+    def test_empty_text_counts_as_success(self) -> None:
+        assert normalize.to_speakable_numbers_checked("") == ("", True)
+
+    def test_wrapper_returns_only_the_text(self) -> None:
+        assert to_speakable_numbers("第 122 天") == "第一百二十二天"

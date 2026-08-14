@@ -77,20 +77,33 @@ def _collapse_cjk_spacing(text: str) -> str:
     return _REPEATED_SPACE.sub(" ", _CJK_INNER_SPACE.sub("", text))
 
 
-def to_speakable_numbers(text: str) -> str:
-    """把阿拉伯数字与单位符号转成确定的中文读法。
+def to_speakable_numbers_checked(text: str) -> tuple[str, bool]:
+    """归一化，并同时报告 cn2an 这一步成功与否。
 
-    cn2an 失败时保留原文并告警——数字读成阿拉伯原文只是不自然，
-    而静默失败会让人误以为归一化生效了。
+    返回 `(文本, 是否转换成功)`。闸门 1 需要这个布尔值：覆盖率偏低时，
+    人必须能区分「内容真的丢了」和「比较用的归一化坏了」——两者的修法完全不同。
+    只写日志不够，日志给人看，报告要给程序读。
+
+    失败时保留前置规则的结果（千分位等仍已生效）并告警——数字读成阿拉伯原文
+    只是不自然，而静默失败会让人误以为归一化生效了。
     """
     if not text:
-        return text
+        return text, True
 
     prepared = _apply_pre_rules(text)
     try:
         converted = cn2an.transform(prepared, "an2cn")
     except Exception as exc:  # cn2an 对畸形输入的异常类型未文档化，只能宽捕获
         _LOG.warning("cn2an 数字转换失败（%s），保留阿拉伯数字原文", exc)
-        converted = prepared
+        return _collapse_cjk_spacing(prepared), False
 
-    return _collapse_cjk_spacing(converted)
+    return _collapse_cjk_spacing(converted), True
+
+
+def to_speakable_numbers(text: str) -> str:
+    """把阿拉伯数字与单位符号转成确定的中文读法。
+
+    渲染流水线用这个；只有闸门需要知道成败，用
+    `to_speakable_numbers_checked`。
+    """
+    return to_speakable_numbers_checked(text)[0]

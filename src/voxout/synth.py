@@ -22,6 +22,7 @@ import numpy as np
 
 from voxout.budget import plan_max_tokens, seconds_per_patch
 from voxout.config import MODEL_ID
+from voxout.hub import load_or_explain
 from voxout.textmatch import han_only
 
 
@@ -72,17 +73,7 @@ class Synthesizer:
     def __init__(self, model_id: str = MODEL_ID) -> None:
         from mlx_audio.tts.utils import load
 
-        try:
-            self._model = load(model_id)
-        except Exception as exc:
-            raise RuntimeError(
-                f"加载模型 {model_id} 失败：{exc}\n"
-                f"默认离线（HF_HUB_OFFLINE=1）。若权重未缓存，先联网拉一次：\n"
-                f"  HF_HUB_OFFLINE=0 HF_ENDPOINT=https://hf-mirror.com "
-                f"HF_HUB_DISABLE_XET=1 uv run python -c "
-                f"\"from mlx_audio.tts.utils import load; load('{model_id}')\""
-            ) from exc
-
+        self._model = load_or_explain(load, model_id, "mlx_audio.tts.utils")
         self._model_id = model_id
 
     @property
