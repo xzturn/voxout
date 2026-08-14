@@ -37,11 +37,20 @@ def test_ltas_cutoff_within_reference_encoder_nyquist() -> None:
     assert config.LTAS_MAX_HZ <= reference_encoder_nyquist
 
 
-def test_voice_drift_threshold_sits_between_floor_and_bad_baseline() -> None:
-    """6% 必须明确高于实测的锚点方案（3.4%）、明确低于坏基线（53.9%）。"""
-    measured_anchor_spread_pct = 3.4
-    bad_baseline_pct = 53.9
-    assert measured_anchor_spread_pct < config.VOICE_DRIFT_MAX_PCT < bad_baseline_pct
+def test_voice_drift_threshold_clears_real_content_noise_and_still_catches_a_swap() -> None:
+    """阈值必须高过真实语料的噪声底，且仍明显低于「换了个人」。
+
+    上界侧的旧下界是 3.4%（设计 §4 的锚点方案实测），它放行了原来的 6%——而 6%
+    低于自己估计器的噪声底，两篇真实短帖各出现一次误报。原因是 3.4% 与阈值的
+    测量条件不同：3.4% 是**文本固定**下测的，阈值管的是文本各不相同的真实内容。
+    换成同条件的读数，band 从 15 倍宽收到 6 倍宽：
+
+        真实内容中位漂移最差 5.35% + 基线自身 n=3 的偏差约 3% ≈ 8.4%
+        坏基线（零样本换人）48.82%
+    """
+    real_content_noise_floor_pct = 5.35 + 4.02 / 2
+    bad_baseline_pct = 48.82
+    assert real_content_noise_floor_pct < config.VOICE_DRIFT_MAX_PCT < bad_baseline_pct
 
 
 def test_voice_root_is_absolute() -> None:

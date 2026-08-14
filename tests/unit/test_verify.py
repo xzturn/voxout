@@ -121,7 +121,7 @@ class TestVoiceGate:
         """同一段音频对自己测出的基线，漂移必须是精确的 0——不是「接近 0」。
 
         这条钉住了「基线代表可复现的那个人」这个前提：若同一信号对自身基线
-        都有漂移，闸门的 6% 预算就有一部分被估计噪声吃掉了。
+        都有漂移，闸门的余量就有一部分被估计噪声吃掉了。
         """
         gate = check_voice([sine(200.0)], OUTPUT_SAMPLE_RATE, baseline_p10=P10_OF_200HZ)
 
@@ -130,12 +130,45 @@ class TestVoiceGate:
         assert gate.threshold == VOICE_DRIFT_MAX_PCT
 
     def test_segment_far_from_the_baseline_fails(self) -> None:
-        """250 Hz 对 200 Hz 基线 ≈ 25% 漂移，远超 6% 余量：这是换了个人说话。"""
+        """250 Hz 对 200 Hz 基线 ≈ 25% 漂移，远超 15% 上限：这是换了个人说话。"""
         gate = check_voice([sine(250.0)], OUTPUT_SAMPLE_RATE, baseline_p10=P10_OF_200HZ)
 
         expected = 100.0 * (P10_OF_250HZ - P10_OF_200HZ) / P10_OF_200HZ
         assert gate.drift_pct == pytest.approx(expected)
         assert gate.drift_pct == pytest.approx(25.1, abs=0.1)
+        assert not gate.passed
+
+    def test_one_deviant_segment_among_many_does_not_decide_the_verdict(self) -> None:
+        """判定看多数段，不看最跑偏的那一段。
+
+        换掉 `np.max` 的理由是实测的：真实内容里单段偏离十几个百分点是常态，
+        cal2 的第 11 段 +12.6%、第 13 段 −13.8%，而全篇音色由人听是一致的。
+        极值统计量还会随段数长——6 段的 max 是 10.65%，14 段是 13.79%，同一批
+        音频的中位数则是 5.35% 与 4.72%。段数越多判得越严，不是闸门该有的性质。
+
+        离群段并不因此消失：它照旧留在 `segment_p10s` 与 `spread_pct` 里给人看。
+        """
+        segments = [sine(200.0)] * 5 + [sine(250.0)]
+
+        gate = check_voice(segments, OUTPUT_SAMPLE_RATE, baseline_p10=P10_OF_200HZ)
+
+        assert gate.drift_pct == pytest.approx(0.0, abs=1e-9)
+        assert gate.passed
+        assert gate.spread_pct > 20.0, "离群段必须仍然作为旁证可见"
+
+    def test_a_majority_of_deviant_segments_still_fails(self) -> None:
+        """多数段跑偏才是「换了个人」，这个必须照旧挡住。
+
+        与上一条只差一个段的归属（2:3 而非 5:1），两条合起来钉住判据是**比例**
+        而不是极值——只有中位数同时满足这两条。
+        """
+        segments = [sine(200.0)] * 2 + [sine(250.0)] * 3
+
+        gate = check_voice(segments, OUTPUT_SAMPLE_RATE, baseline_p10=P10_OF_200HZ)
+
+        assert gate.drift_pct == pytest.approx(
+            100.0 * (P10_OF_250HZ - P10_OF_200HZ) / P10_OF_200HZ
+        )
         assert not gate.passed
 
     def test_single_segment_has_no_inter_segment_spread(self) -> None:
