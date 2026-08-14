@@ -50,7 +50,8 @@ def plan_max_tokens(n_han: int, sec_per_patch: float) -> int:
         math.ceil(n_han * SECONDS_PER_HAN_ESTIMATE / sec_per_patch) + TOKEN_MARGIN_PATCHES
     )
     if needed > MAX_TOKENS_CAP:
-        fits = int((MAX_TOKENS_CAP - TOKEN_MARGIN_PATCHES) * sec_per_patch / SECONDS_PER_HAN_ESTIMATE)
+        usable_patches = MAX_TOKENS_CAP - TOKEN_MARGIN_PATCHES
+        fits = int(usable_patches * sec_per_patch / SECONDS_PER_HAN_ESTIMATE)
         raise BudgetError(
             f"{n_han} 汉字需要 {needed} 个 patch，超过上限 {MAX_TOKENS_CAP}。"
             f"单段请控制在 {fits} 汉字以内，或降低切段阈值让 chunker 分段。"

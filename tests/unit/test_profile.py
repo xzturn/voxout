@@ -178,7 +178,7 @@ class TestValidationFailures:
         """ref_text 为空会退化成非克隆模式，音色随机——这是静默的正确性事故。"""
         make_profile_dir(tmp_path, anchor_text="   \n")
 
-        with pytest.raises(ValueError, match="anchor.txt"):
+        with pytest.raises(ValueError, match=r"anchor\.txt"):
             load_profile("house", root=tmp_path)
 
     def test_missing_baseline_is_refused(self, tmp_path: Path) -> None:

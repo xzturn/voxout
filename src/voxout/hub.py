@@ -8,14 +8,12 @@ TTS 与 ASR 两处加载共用这段翻译——错误消息的结构完全相�
 不同，没有理由写两遍。
 """
 
-from typing import Callable, TypeVar
-
-_Model = TypeVar("_Model")
+from collections.abc import Callable
 
 
-def load_or_explain(
-    load: Callable[[str], _Model], model_id: str, import_path: str
-) -> _Model:
+def load_or_explain[Model](
+    load: Callable[[str], Model], model_id: str, import_path: str
+) -> Model:
     """加载模型；失败时换成带修复命令的 RuntimeError 抛出。
 
     Args:

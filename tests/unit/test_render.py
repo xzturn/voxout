@@ -404,7 +404,7 @@ class TestVoiceGateFailure:
 
 class TestRefusals:
     def test_missing_source_is_refused(self, tmp_path: Path, profile: VoiceProfile) -> None:
-        with pytest.raises(FileNotFoundError, match="缺席.md"):
+        with pytest.raises(FileNotFoundError, match=r"缺席\.md"):
             render(
                 tmp_path / "缺席.md",
                 profile,

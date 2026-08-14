@@ -44,7 +44,8 @@ THRESHOLDS_DEFAULT = (900, 200, 80)
 
 
 def _read_post(path: Path) -> str:
-    return normalize.to_speakable_numbers(markdown.to_speakable(path.read_text(encoding="utf-8")))
+    spoken = markdown.to_speakable(path.read_text(encoding="utf-8"))
+    return normalize.to_speakable_numbers(spoken)
 
 
 def _speak_and_hear(
@@ -105,7 +106,9 @@ def _thresholds(raw: str) -> tuple[int, ...]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("post", type=Path, nargs="?", default=POST_DEFAULT, help="markdown 帖子")
+    parser.add_argument(
+        "post", type=Path, nargs="?", default=POST_DEFAULT, help="markdown 帖子"
+    )
     parser.add_argument(
         "--thresholds",
         type=_thresholds,

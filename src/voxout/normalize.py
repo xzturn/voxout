@@ -93,7 +93,9 @@ def to_speakable_numbers_checked(text: str) -> tuple[str, bool]:
     prepared = _apply_pre_rules(text)
     try:
         converted = cn2an.transform(prepared, "an2cn")
-    except Exception as exc:  # cn2an 对畸形输入的异常类型未文档化，只能宽捕获
+    # cn2an 对畸形输入的异常类型未文档化，只能宽捕获。这里不是静默吞异常：
+    # 既告警又把 False 作为「归一化是否生效」回给调用方，最终进入差异报告。
+    except Exception as exc:  # noqa: BLE001
         _LOG.warning("cn2an 数字转换失败（%s），保留阿拉伯数字原文", exc)
         return _collapse_cjk_spacing(prepared), False
 

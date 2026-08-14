@@ -102,7 +102,7 @@ def test_blank_text_counts_as_missing(anchor: Path) -> None:
 
 def test_missing_audio_file_is_reported_with_its_path(tmp_path: Path) -> None:
     missing = tmp_path / "nope.wav"
-    with pytest.raises(FileNotFoundError, match="nope.wav"):
+    with pytest.raises(FileNotFoundError, match=r"nope\.wav"):
         resolve_reference(missing, "锚点文本。")
 
 

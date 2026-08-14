@@ -102,7 +102,7 @@ class TestContentGate:
         assert gate.passed
 
     def test_missing_audio_is_refused(self, tmp_path: Path) -> None:
-        with pytest.raises(FileNotFoundError, match="nope.wav"):
+        with pytest.raises(FileNotFoundError, match=r"nope\.wav"):
             check_content(tmp_path / "nope.wav", THREE_SENTENCES, RecordingTranscriber(""))
 
     def test_empty_spoken_text_is_refused(self, wav: Path) -> None:

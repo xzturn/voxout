@@ -18,6 +18,7 @@ voxout = "voxout.cli:main"
 dev = [
     "pytest>=8.0",
     "pytest-cov>=7.1.0",
+    "ruff>=0.14",
 ]
 
 [build-system]
@@ -35,6 +36,36 @@ prerelease = "allow"
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 default = true
+
+# 只用 `ruff check`，不用 `ruff format`。
+#
+# ruff 按**码点**数行宽，而中文一个字占 2 个终端列。于是同样 96 码点的两行，
+# 全 ASCII 的那行是 96 列，中文那行接近 190 列。现有代码是按肉眼宽度手工折行的
+# ——越界 88 码点的 58 行恰好都是 ASCII 密集行，因为它们看起来短。跑一次
+# `ruff format` 会把中文重的行重新接成一长条（实测 12 个文件、99 行，全是这种
+# 回接），比手工折行更难读。折行里带着 formatter 看不见的信息，所以不交给它。
+#
+# line-length 因此只当 E501 的失控阈值用：96 能抓住真正跑飞的 ASCII 行
+# （budget.py 那行 102），又不会把 58 行手工折行全部误报。
+[tool.ruff]
+line-length = 96
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "BLE", "RUF"]
+# RUF001/002/003 查的是拉丁文里混入的同形字（homoglyph 攻击）。这份代码的注释与
+# 文档串是中文，全角标点就是正确的标点——实测报出 1536 条，全部是误报。整族关掉
+# 会连带丢掉 RUF043（它查出了 4 处 `match="anchor.txt"` 里未转义的 `.`，是真缺陷），
+# 所以只关这三条。
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+# 探测脚本是一次性 CLI 工具，print 就是它的输出通道。
+"tests/fixtures/probe_*.py" = ["T201"]
+# SIM300 把 `config.LTAS_MAX_HZ <= nyquist` 判成 Yoda，想改写成 `nyquist >=
+# config.LTAS_MAX_HZ`。这个文件通篇在断言 config 常量的性质，被测对象就是常量，
+# 全都写在左边（如 `config.F0_MAX_HZ >= 250.0`）。照它改只会让这一行成为唯一
+# 反过来的，更不一致。
+"tests/unit/test_config.py" = ["SIM300"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
