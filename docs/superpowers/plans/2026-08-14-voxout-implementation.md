@@ -11,18 +11,21 @@
 
 **依据:** [设计文档](../specs/2026-08-13-voxcpm2-content-tts-design.md)（已批准）
 
+> **状态：13 个任务全部实现并提交**（`c35b887`..HEAD，另有 T13a/b/c 三次修正）。执行期间没有逐步勾选下面的 `- [ ]`，完成情况以 git 历史与设计文档的回填为准。实测读数（两道闸门的标定、秒/汉字 旁证、正负控制标尺）已写回设计 §3/§6/§10/§11；渲染产物在 `out/`（gitignore，不入库），其读数已转录进文档。人工听审待办见 [`docs/listening-review.md`](../../listening-review.md)。
+
 ## Global Constraints
 
 - 语言 **Python**，不用 Rust。理由见设计 §2；本轮核实的补充：`mlx-rs` crate 存在（v0.25.3）但停更于 2025-12 且无模型库，candle/mlx-rs 均无 VoxCPM2 实现；决定性理由是 RTF≈0.93 下编排层占比 <0.1%，且两道闸门（whisper ASR + numpy F0）同样钉在 Python 上。
 - 输出采样率固定 **48000 Hz**，int16 PCM WAV。
 - 模型 `mlx-community/VoxCPM2-8bit`；ASR `mlx-community/whisper-large-v3-turbo-asr-fp16`。
 - 闸门 1：ASR 汉字覆盖率 **≥ 0.97**，不过则**不产出音频**，`--force` 为逃生口。
-- 闸门 2：p10 F0 相对锚点漂移 **≤ 6.0%**，不过则告警 + manifest 标记，仍产出音频。
-- **闸门 2 必须用 p10 F0，不得用中位数**（设计 §4：中位数被语调污染，同一人天然 5.1% 极差）。
+- 闸门 2：p10 F0 相对锚点漂移 **≤ 15.0%**，取**各段漂移绝对值的中位数**；不过则告警 + manifest 标记，仍产出音频。（原为 ≤6.0% 取最大值，T13c 按真实语料重标定，理由见 `verify.check_voice` 与设计 §6 的回填。）
+- **闸门 2 必须用 p10 F0，不得用中位数 F0**（设计 §4：中位数 F0 被语调污染，同一人天然 5.1% 极差）。
+  ⚠️ 这一条与上一条不矛盾，两个「中位数」在不同的轴上：**段内**把 F0 分布折成一个数时必须取 p10（低端分位）而非中位数；**跨段**把各段的漂移折成一个判据时取中位数而非最大值。段内取中位数会被语调污染，跨段取最大值会随段数上升。
 - F0 估计器有效范围 **60–400 Hz**，超出发生八度错误（440 Hz → 220.2 Hz）。这是取值后果，必须写成断言，防止日后被当 bug「修」掉。
 - 所有渲染默认 `HF_HUB_OFFLINE=1`（权重已缓存 3.0GB）。宁可离线明确失败，不要静默挂死。
 - 音色档案位置：`~/Life OS/60-69 Content Production/68 Writing Assets/voice/<name>/`，含 `anchor.wav` / `anchor.txt` / `profile.toml`。
-- 切段阈值 **900 汉字**；本轮两篇真实短帖为 283 / 572 汉字，均单次调用。
+- 切段阈值 **60 汉字**，且**段落原子**：段落之间一律分开，阈值只管单个超长段落内部要不要再切。（原为 900 汉字单次调用，T13a 实测单次长调用会跳读：213 汉字覆盖率 55.40%。）本轮两篇真实短帖清洗后为 213 / 540 汉字，分成 6 / 14 段。
 - 不可变：数据类一律 `frozen=True`，函数返回新对象。
 - 文件 200–400 行为常态，800 行上限；函数 < 50 行。
 
@@ -53,7 +56,7 @@ voxout/
   src/voxout/textmatch.py         han_only / coverage / missing_spans     纯 stdlib
   src/voxout/markdown.py          md → 可朗读文本                        纯
   src/voxout/normalize.py         年份/千分位/区间/单位 + cn2an          cn2an
-  src/voxout/chunker.py           >900 汉字才切                          纯
+  src/voxout/chunker.py           段落原子；>60 汉字的段落才切            纯
   src/voxout/metrics.py           F0 / p10 / LTAS / cosine               numpy
   src/voxout/budget.py            patch 预算 → max_tokens                纯
   src/voxout/profile.py           音色档案：铸造 / 加载 / 校验
@@ -127,14 +130,14 @@ voxout/
 
 **Interfaces:** `chunk(text: str, threshold_han: int = CHUNK_THRESHOLD_HAN) -> tuple[str, ...]`
 
-- [ ] 测试：283 汉字 → 单段（原文本身）；900 汉字整好 → 单段（`>` 而非 `>=`）；901 汉字 → 多段；按 `。！？；\n` 切；无标点的超长句 → 不得丢字（返回单段并 `logging.warning`，切段不是丢内容的许可）；每段拼回去汉字数守恒（断言 `sum(han) == han(total)`）。
+- [ ] 测试：单段落 60 汉字整好 → 不切（`>` 而非 `>=`）；61 汉字 → 多段；多段落输入 → 段落各自成段（原子化，T13a）；按 `。！？；\n` 切；无标点的超长句 → 不得丢字（返回单段并 `logging.warning`，切段不是丢内容的许可）；每段拼回去汉字数守恒（断言 `sum(han) == han(total)`）。
 - [ ] Commit `feat: chunker 长文切段`
 
 ### Task 6: metrics.py（对闭式真值校准）
 
 **Interfaces:** `frames_of(signal, frame=FRAME, hop=HOP)`；`voiced_f0s(signal, sr)`；`p10_f0(signal, sr)`；`median_f0(signal, sr)`；`ltas(signal, sr)`；`cosine(a, b)`；`spread_pct(values)`
 
-代码由 `tests/probe_control.py` 与 `probe_voice_consistency.py` 升格，**`sr` 改为显式参数**（修正 3）。
+代码由设计阶段的 `tests/probe_control.py` 与 `probe_voice_consistency.py` 升格（两者已删除，见设计 §10），**`sr` 改为显式参数**（修正 3）。
 
 - [ ] 测试（全部有闭式真值，符合 lessons.md #1）：
   - 200 Hz 正弦 @48k，2s → `p10_f0` 与 `median_f0` 均在 200 ± 1%
