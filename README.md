@@ -6,11 +6,10 @@ VoxCPM2 渲染 + 音色锚点 + 两道自动闸门。它是个 CLI 工具，没�
 
 ## 渲染一篇
 
-新机器先走一遍下面的〈换机器〉，`house` 音色铸好之后才有这一步。
+首次使用先走一遍〈安装〉——得先有一个铸好的音色，才有这一步。
 
 ```bash
-cd ~/workspace/claude/voxout
-uv run voxout render <某篇.md> --voice house
+uv run voxout render <某篇.md> --voice <音色名>
 ```
 
 不加 `-o` 时输出到 `out/<帖子名>.wav`（中文保留，空白折成连字符）。
@@ -58,7 +57,7 @@ $ uv run voxout render out/smoke.md --voice house -o out/smoke.wav
 | `--voice NAME` | 必填。音色名，例如 `house` |
 | `-o, --output PATH` | 输出 wav，默认 `out/<帖子名>.wav` |
 | `--force` | 内容闸门不过也产出音频，manifest 记 `forced=true` |
-| `--voice-root PATH` | 音色档案根目录，默认见〈音色档案〉 |
+| `--voice-root PATH` | 音色档案根目录，默认 `~/.voxout/voice`，见〈音色档案〉 |
 
 ## 退出码
 
@@ -72,19 +71,31 @@ $ uv run voxout render out/smoke.md --voice house -o out/smoke.wav
 
 ## 音色档案
 
-`house` 已经铸好，日常不用管这一层。档案默认在：
+一个音色一份档案，铸好之后日常不用管这一层。默认位置：
 
 ```
+~/.voxout/voice/<音色名>/
     anchor.wav      锚点音频（48kHz）
     anchor.txt      锚点文本
     profile.toml    基线 p10 F0、种子、铸造时间
 ```
 
+档案是长期资产——一个音色一生只铸一次，此后所有渲染都对齐它——所以它落在 home 下
+而不是仓库里：换仓库、删仓库、重新 clone 都不影响已铸好的音色。
+
+根目录有三层覆盖，越靠外越优先：
+
+| 层 | 用途 |
+|---|---|
+| `--voice-root PATH` | 只管这一次调用 |
+| `VOXOUT_VOICE_ROOT` | 本机常设。档案放在别处（例如随笔记库一起同步）时写进 shell 配置 |
+| `~/.voxout/voice` | 默认值 |
+
 退出码 2 的「档案缺失」指的就是这个目录少了文件，最常见的起因是 `--voice` 拼错。
 
-## 换机器
+## 安装
 
-已配好的机器不需要任何安装步骤。换机器时按顺序走三步。
+按顺序走三步。走完之后这台机器就不用再管了——换机器时再走一遍同样三步。
 
 **1. 装依赖**
 
@@ -92,8 +103,17 @@ $ uv run voxout render out/smoke.md --voice house -o out/smoke.wav
 uv sync
 ```
 
-需要 Python ≥ 3.12 与 [uv](https://docs.astral.sh/uv/)。依赖走清华镜像（`files.pythonhosted.org`
-在本机网络下会静默挂死，实测 29 分钟零进展，见 `pyproject.toml`）。
+需要 Python ≥ 3.12、[uv](https://docs.astral.sh/uv/)，以及一台 Apple Silicon 的
+Mac——渲染与转录都走 MLX，没有 CPU 或 CUDA 退路。
+
+`pyproject.toml` 故意不钉索引镜像：索引是每台机器的网络事实，不该由项目强加。
+某些网络下默认的 `files.pythonhosted.org` 会静默挂死（实测 29 分钟零进展），
+这种情况在本机换一个索引：
+
+```bash
+export UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple   # 按所在网络择一
+uv sync
+```
 
 **2. 拉模型权重**
 
@@ -108,7 +128,9 @@ uv sync
 两个都要拉，注意 TTS 走 `tts.utils`、ASR 走 `stt.utils`：
 
 ```bash
-export HF_HUB_OFFLINE=0 HF_ENDPOINT=https://hf-mirror.com HF_HUB_DISABLE_XET=1
+export HF_HUB_OFFLINE=0 HF_HUB_DISABLE_XET=1
+# 直连拉不动时再加一个镜像端点，例如：
+#   export HF_ENDPOINT=https://hf-mirror.com
 
 uv run python -c "from mlx_audio.tts.utils import load; \
   load('mlx-community/VoxCPM2-8bit')"
@@ -122,14 +144,16 @@ uv run python -c "from mlx_audio.stt.utils import load; \
 uv run voxout mint-voice house --seed 42
 ```
 
-一个音色一生只铸一次，此后所有渲染都对齐它。`--text` 可换锚点文本，但默认那句是
-设计 §4 全部探测的标定基准——换掉就要重新标定闸门 2 的标尺。`--seed` 不给则这次
-铸造不可复现。铸完就能渲染了。
+`house` 只是个名字，随便取，本文档的例子都用它。一个音色一生只铸一次，此后所有
+渲染都对齐它。`--text` 可换锚点文本，但默认那句是设计 §4 全部探测的标定基准——
+换掉就要重新标定闸门 2 的标尺。`--seed` 不给则这次铸造不可复现。铸完就能渲染了。
+
+档案默认写到 `~/.voxout/voice/house/`，位置与覆盖方式见〈音色档案〉。
 
 ## 开发
 
 ```bash
-uv run pytest -m 'not integration'   # 快速回路，242 项 / 0.7 秒，不碰模型
+uv run pytest -m 'not integration'   # 快速回路，247 项 / 0.8 秒，不碰模型
 uv run pytest                        # 含 integration，会加载 3.0GB 权重，慢
 uv run ruff check                    # 只用 check，不用 format，理由见 pyproject.toml
 ```

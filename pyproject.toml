@@ -32,10 +32,11 @@ packages = ["src/voxout"]
 [tool.uv]
 prerelease = "allow"
 
-# 设计 §4 坑 1：默认走 files.pythonhosted.org 在本机网络下静默挂死（实测 29 分钟零进展）。
-[[tool.uv.index]]
-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-default = true
+# 这里**不**钉 [[tool.uv.index]]。索引是每台机器的网络事实，不是项目的属性——
+# 钉进来会把一个地区镜像强加给所有克隆者。某些网络下默认的
+# files.pythonhosted.org 会静默挂死（实测 29 分钟零进展，设计 §4 坑 1），
+# 那种情况用环境变量在本机解决，见 README〈装依赖〉：
+#   export UV_DEFAULT_INDEX=<镜像地址>
 
 # 只用 `ruff check`，不用 `ruff format`。
 #

@@ -3,6 +3,8 @@
 没有来源的阈值就是猜的，而猜的阈值会在第一次误报后被关掉——等于没有闸门。
 """
 
+import os
+from collections.abc import Mapping
 from pathlib import Path
 
 # ---------- 模型 ----------
@@ -58,7 +60,7 @@ T13 在两篇真实短帖上重新读数（整篇一次转写，即闸门实际�
 
 下调的触发条件写在这里，免得下次凭印象决定：**某次读数低于 97%，且音频经人工听审
 确认完整**（秒每汉字落在 0.20–0.26 的正常带内只是旁证，不能替代听审）。满足这两条
-才把阈值与理由一并更新——不许「调阈值让它过」而不写原因（lessons.md #1）。
+才把阈值与理由一并更新——不许「调阈值让它过」而不写原因。
 
 还有一处值得记下：540 汉字那篇逐段转写再按汉字加权是 97.59%，整篇一次转写是
 98.89%。整篇转写的上下文更长，ASR 反而更准，所以按段设闸门只会更严而不是更准。"""
@@ -133,7 +135,38 @@ ANCHOR_TEXT_DEFAULT = "这是一段用来测试音色是否稳定的中文句子
 
 # ---------- 路径 ----------
 
-VOICE_ROOT = Path.home() / "Life OS/60-69 Content Production/68 Writing Assets/voice"
+VOICE_ROOT_ENV = "VOXOUT_VOICE_ROOT"
+"""覆盖 `VOICE_ROOT` 的环境变量名。"""
+
+VOICE_ROOT_DEFAULT_RELATIVE = ".voxout/voice"
+"""默认根目录相对 home 的位置。"""
+
+
+def resolve_voice_root(env: Mapping[str, str], home: Path) -> Path:
+    """定位音色档案根目录：`VOXOUT_VOICE_ROOT` 优先，否则 `~/.voxout/voice`。
+
+    档案是长期资产（一个音色一生只铸一次，此后所有渲染都对齐它），所以默认位置
+    必须与工作目录无关——放在 home 下而不是仓库里。有三层覆盖，越靠外越优先：
+    `--voice-root` > `VOXOUT_VOICE_ROOT` > 默认值。环境变量这一层是给「档案存在
+    别处」的机器用的（例如放进笔记库随其一起同步），免得每条命令都带一次 flag。
+
+    写成收 `env` 与 `home` 的纯函数而不是模块级的一行 `os.environ.get`，是为了
+    能直接测——否则要靠 `importlib.reload` 换环境，而那会把本模块其余常量一并
+    重建。同 `metrics` 显式接收 `sr` 的理由：环境是参数，不是隐式读取的背景。
+
+    注：`home` 只作默认值的基准；环境变量里的 `~` 由 `expanduser` 按**运行用户的
+    真实 home** 展开。生产中两者同为 `Path.home()`，分开只为让默认值可测。
+    """
+    override = env.get(VOICE_ROOT_ENV, "").strip()
+    if not override:
+        return home / VOICE_ROOT_DEFAULT_RELATIVE
+    # 相对路径必须转绝对：否则档案位置随调用时的 cwd 漂移，而 `--help` 会把
+    # 一个当时的 cwd 印成「默认值」。空串已在上面挡掉——`Path("").resolve()`
+    # 正是 cwd，是这里最容易踩的坑。
+    return Path(override).expanduser().resolve()
+
+
+VOICE_ROOT = resolve_voice_root(os.environ, Path.home())
 """音色档案根目录（设计 §5）。每个音色一个子目录：anchor.wav / anchor.txt / profile.toml。"""
 
 OUTPUT_DIR = Path("out")

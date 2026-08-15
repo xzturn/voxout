@@ -4,6 +4,8 @@
 合起来互相矛盾。
 """
 
+from pathlib import Path
+
 from voxout import config
 
 
@@ -55,3 +57,45 @@ def test_voice_drift_threshold_clears_real_content_noise_and_still_catches_a_swa
 
 def test_voice_root_is_absolute() -> None:
     assert config.VOICE_ROOT.is_absolute()
+
+
+class TestResolveVoiceRoot:
+    """`VOXOUT_VOICE_ROOT` 的解析。
+
+    环境变量是给「档案不放默认位置」的机器用的逃生口（例如放在笔记库里）。
+    解析写成纯函数而不是模块级的一行 `os.environ.get`，是为了能直接测——
+    否则要靠 `importlib.reload` 才能换掉环境，而那会让 config 的其他常量
+    也跟着重建。理由与 `metrics` 显式接收 `sr` 相同：不读环境，环境是参数。
+    """
+
+    HOME = Path("/home/someone")
+
+    def test_falls_back_to_dot_voxout_when_unset(self) -> None:
+        assert config.resolve_voice_root({}, self.HOME) == self.HOME / ".voxout/voice"
+
+    def test_env_var_wins(self) -> None:
+        root = config.resolve_voice_root({"VOXOUT_VOICE_ROOT": "/srv/voices"}, self.HOME)
+        assert root == Path("/srv/voices")
+
+    def test_empty_env_var_falls_back(self) -> None:
+        """空串是「变量没设好」，不是「用当前目录」。
+
+        `export VOXOUT_VOICE_ROOT=` 或引用了一个未定义的变量都会得到空串。
+        若照字面当路径用，`Path("").resolve()` 是**当前工作目录**——音色档案
+        会被写进随便哪个 cwd，且 `--help` 会把它当默认值印出来。
+        """
+        assert config.resolve_voice_root(
+            {"VOXOUT_VOICE_ROOT": ""}, self.HOME
+        ) == self.HOME / ".voxout/voice"
+
+    def test_expands_tilde(self) -> None:
+        """shell 不展开引号里的 `~`，所以这里要自己展开。"""
+        root = config.resolve_voice_root({"VOXOUT_VOICE_ROOT": "~/voices"}, self.HOME)
+        assert root == Path.home() / "voices"
+
+    def test_relative_env_var_becomes_absolute(self) -> None:
+        """相对路径必须转绝对，否则 `VOICE_ROOT` 的绝对性不变式被环境变量破坏，
+        且档案位置会随调用时的 cwd 漂移。"""
+        root = config.resolve_voice_root({"VOXOUT_VOICE_ROOT": "voices"}, self.HOME)
+        assert root.is_absolute()
+        assert root == Path.cwd() / "voices"

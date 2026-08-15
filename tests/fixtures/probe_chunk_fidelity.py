@@ -1,8 +1,8 @@
 """探测：单次生成的文本长度与内容保真度的关系。
 
-起因是一次真实失败。`2026-07-22 留意波动` 一帖 213 汉字、单段送出，三次独立采样
-全部在**同一处**跳掉同一段 35 汉字（覆盖率 83.57% / 83.57% / 82.63%）。三次采样
-跳同一段，说明这不是采样噪声，而是输入长度或结构本身触发的。
+起因是一次真实失败。一篇 213 汉字的短帖单段送出，三次独立采样全部在**同一处**
+跳掉同一段 35 汉字（覆盖率 83.57% / 83.57% / 82.63%）。三次采样跳同一段，说明
+这不是采样噪声，而是输入长度或结构本身触发的。
 
 设计文档给闸门 2 之外的 `CHUNK_THRESHOLD_HAN = 900` 的依据是「实测 1050 汉字单次
 调用零截断」。那次探测测的是**截断**——音频有没有提前结束；它测不到**跳读**——
@@ -10,7 +10,10 @@
 跳读这件事从未被测量过。这个脚本补上那次测量。
 
 用法：
-    uv run python tests/fixtures/probe_chunk_fidelity.py [帖子.md] [--thresholds 900,80,60]
+    uv run python tests/fixtures/probe_chunk_fidelity.py <帖子.md> [--thresholds 900,80,60]
+
+帖子路径必须显式给出：探测量的是**这份语料**上的段长与保真度关系，换语料就要
+重新读数（句长与标点密度都会影响跳读的起点，见设计 §11），所以没有合理的默认值。
 
 它对同一篇帖子扫几个 `threshold_han`，每段单独过一次 ASR 回环，逐段打印覆盖率与
 段长。要的不是「过/不过」这一个比特，而是**段长与保真度的关系**——标定一个新阈值
@@ -30,11 +33,6 @@ from voxout.profile import VoiceProfile, load_profile
 from voxout.synth import Synthesizer
 from voxout.verify import TranscriberLike, check_content, load_transcriber
 
-POST_DEFAULT = (
-    Path.home()
-    / "Life OS/60-69 Content Production/63 Short-form Posts"
-    / "2026-07-22 留意波动，把控制权拿回来.md"
-)
 VOICE = "house"
 PROBE_DIR = Path("out/probe")
 
@@ -106,9 +104,7 @@ def _thresholds(raw: str) -> tuple[int, ...]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "post", type=Path, nargs="?", default=POST_DEFAULT, help="markdown 帖子"
-    )
+    parser.add_argument("post", type=Path, help="markdown 帖子")
     parser.add_argument(
         "--thresholds",
         type=_thresholds,

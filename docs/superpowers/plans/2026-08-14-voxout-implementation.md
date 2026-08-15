@@ -3,7 +3,7 @@
 > **For agentic workers:** 用 superpowers:executing-plans 逐任务实现。步骤用 `- [ ]` 勾选。
 > 本计划为同会话即时执行而写：接口、阈值、测试断言全部给定；平凡模块给签名与行为规约，微妙处给完整代码。
 
-**Goal:** 把 `63 Short-form Posts/*.md` 渲染成音色固定、内容完整、可对外发布的 48kHz 音频。
+**Goal:** 把短帖 markdown 渲染成音色固定、内容完整、可对外发布的 48kHz 音频。
 
 **Architecture:** 库内核 + 瘦 CLI，不起服务。纯文本模块（markdown / normalize / textmatch / chunker / budget / metrics）不碰模型，可秒级单测；碰模型的模块（synth / profile.mint / verify.gate1）走 `integration` 标记。一次渲染只加载一个模型实例。
 
@@ -24,7 +24,7 @@
   ⚠️ 这一条与上一条不矛盾，两个「中位数」在不同的轴上：**段内**把 F0 分布折成一个数时必须取 p10（低端分位）而非中位数；**跨段**把各段的漂移折成一个判据时取中位数而非最大值。段内取中位数会被语调污染，跨段取最大值会随段数上升。
 - F0 估计器有效范围 **60–400 Hz**，超出发生八度错误（440 Hz → 220.2 Hz）。这是取值后果，必须写成断言，防止日后被当 bug「修」掉。
 - 所有渲染默认 `HF_HUB_OFFLINE=1`（权重已缓存 3.0GB）。宁可离线明确失败，不要静默挂死。
-- 音色档案位置：`~/Life OS/60-69 Content Production/68 Writing Assets/voice/<name>/`，含 `anchor.wav` / `anchor.txt` / `profile.toml`。
+- 音色档案位置：音色根目录下的 `<name>/`，含 `anchor.wav` / `anchor.txt` / `profile.toml`。根目录默认 `~/.voxout/voice`，可用 `VOXOUT_VOICE_ROOT` 或 `--voice-root` 覆盖（`config.resolve_voice_root`）。
 - 切段阈值 **60 汉字**，且**段落原子**：段落之间一律分开，阈值只管单个超长段落内部要不要再切。（原为 900 汉字单次调用，T13a 实测单次长调用会跳读：213 汉字覆盖率 55.40%。）本轮两篇真实短帖清洗后为 213 / 540 汉字，分成 6 / 14 段。
 - 不可变：数据类一律 `frozen=True`，函数返回新对象。
 - 文件 200–400 行为常态，800 行上限；函数 < 50 行。
@@ -50,7 +50,7 @@
 
 ```
 voxout/
-  pyproject.toml                  uv 项目 + pytest 配置 + 清华镜像 + prerelease=allow
+  pyproject.toml                  uv 项目 + pytest 配置 + prerelease=allow
   src/voxout/__init__.py          设 HF_HUB_OFFLINE=1
   src/voxout/config.py            全部常量，每个阈值注明来源
   src/voxout/textmatch.py         han_only / coverage / missing_spans     纯 stdlib
@@ -75,7 +75,7 @@ voxout/
 
 **Files:** Create `pyproject.toml`, `src/voxout/__init__.py`, `src/voxout/config.py`, `tests/unit/test_config.py`
 
-- [ ] pyproject：`requires-python=">=3.12"`，deps `mlx-audio[tts,stt]>=0.4.8`、`cn2an>=0.5.24`、`numpy>=2.0`、`scipy>=1.18`；dev deps `pytest`；`[tool.uv] prerelease="allow"`（transformers 5.15.0 需要）；`[[tool.uv.index]]` 指向 `https://pypi.tuna.tsinghua.edu.cn/simple` 且 `default=true`（设计 §4 坑 1：默认源静默挂死 29 分钟）；`[tool.pytest.ini_options]` 注册 `integration` marker，`pythonpath=["src"]`，不设 addopts（显式优于隐式）。
+- [ ] pyproject：`requires-python=">=3.12"`，deps `mlx-audio[tts,stt]>=0.4.8`、`cn2an>=0.5.24`、`numpy>=2.0`、`scipy>=1.18`；dev deps `pytest`；`[tool.uv] prerelease="allow"`（transformers 5.15.0 需要）；**不钉 `[[tool.uv.index]]`**（原计划钉一个地区镜像且 `default=true`，依据是设计 §4 坑 1「默认源静默挂死 29 分钟」；后改为不钉——索引是每台机器的网络事实，钉进项目等于强加给所有克隆者，该情形改用 `UV_DEFAULT_INDEX` 在本机解决，见 `pyproject.toml` 注释与 README〈安装〉）；`[tool.pytest.ini_options]` 注册 `integration` marker，`pythonpath=["src"]`，不设 addopts（显式优于隐式）。
 - [ ] `__init__.py`：`os.environ.setdefault("HF_HUB_OFFLINE", "1")` + 一行注释指向设计 §9。
 - [ ] `config.py`：常量见 Global Constraints，每条注明来源（实测值/设计章节）。
 - [ ] 测试：阈值自洽性——`0 < COVERAGE_MIN < 1`；`CHUNK_THRESHOLD_HAN * SECONDS_PER_HAN_ESTIMATE < MAX_TOKENS_CAP * 0.16`（切段阈值必须落在 token 预算内，否则两个机制互相矛盾）；`F0_MIN_HZ < F0_MAX_HZ`；`VOICE_ROOT` 是绝对路径。
@@ -139,7 +139,7 @@ voxout/
 
 代码由设计阶段的 `tests/probe_control.py` 与 `probe_voice_consistency.py` 升格（两者已删除，见设计 §10），**`sr` 改为显式参数**（修正 3）。
 
-- [ ] 测试（全部有闭式真值，符合 lessons.md #1）：
+- [ ] 测试（全部有闭式真值——参照值要么是闭式解，要么是另一条独立算路，不许凭印象定）：
   - 200 Hz 正弦 @48k，2s → `p10_f0` 与 `median_f0` 均在 200 ± 1%
   - **八度错误锁**：440 Hz 正弦 → 判为 220.2 Hz（断言 215 < est < 226）。原因：440 > F0_MAX_HZ=400，真周期 109 样本 < lag_min=120，峰值落在 2 倍周期。这是设计取值的后果，断言写死以防被误「修」
   - p10 vs 中位数的判别力：200 Hz 段 + 250 Hz 段拼接 → `p10_f0` ≈ 200，`median_f0` > 210（这正是设计 §4 那个方法论陷阱的量化形式）
@@ -253,13 +253,13 @@ def load_transcriber(model_id: str = ASR_MODEL_ID)
 
 - [ ] `render` 流水线：读 md → `markdown.to_speakable` → `normalize.to_speakable_numbers` → `chunker.chunk` → `profile.load_profile` → `Synthesizer` → 逐段 `generate(ref_audio=anchor, ref_text=anchor_text, max_tokens=预算)` → `assemble.join` → 写临时 wav → `verify.check_content`（不过且无 `--force` 则删除临时文件、写 `.diff.txt`、退出码 1）→ `verify.check_voice` → 写 `out/<slug>.wav` + `out/<slug>.manifest.json`。
 - [ ] 错误处理按设计 §9 六行逐一对应，消息含可复制的修复命令。
-- [ ] 真实铸造 `house` 音色：`mint-voice house --seed 42`，锚点文本取设计 §4 探测用的 `这是一段用来测试音色是否稳定的中文句子。`（其 bit 级可复现性已实测）。写入 `68 Writing Assets/voice/house/`。
+- [ ] 真实铸造 `house` 音色：`mint-voice house --seed 42`，锚点文本取设计 §4 探测用的 `这是一段用来测试音色是否稳定的中文句子。`（其 bit 级可复现性已实测）。写入音色根目录下的 `house/`。
 - [ ] Commit `feat: cli mint-voice 与 render`
 
 ### Task 13: 端到端 + 闸门标定 + 回填文档
 
 - [ ] 对两篇真实短帖各跑一次 `render`，记录 coverage 与 drift 实际值。
-- [ ] **标定**：闸门 1 的 97% 是在「numeral-free 语料 + Whisper 默认参数」下测的 98.4–98.9%。本轮改了两处（显式 `language="zh"`/`temperature=0.0`、双侧归一化），**阈值必须在真实语料上重新读数**。若实测低于 97% 且音频经人工确认完整，则把阈值与理由一并更新，不许「调阈值让它过」而不写原因（lessons.md #1）。
+- [ ] **标定**：闸门 1 的 97% 是在「numeral-free 语料 + Whisper 默认参数」下测的 98.4–98.9%。本轮改了两处（显式 `language="zh"`/`temperature=0.0`、双侧归一化），**阈值必须在真实语料上重新读数**。若实测低于 97% 且音频经人工确认完整，则把阈值与理由一并更新，不许「调阈值让它过」而不写原因。
 - [ ] 独立旁证核对：两篇的 `seconds_per_han` 应在同一量级（漂移 < 15%），与 coverage 互为独立证据。
 - [ ] 探测脚本迁入 `tests/fixtures/`，改为从 `voxout.metrics` 导入，删除脚本内重复的 F0 实现（DRY），保留正/负控制标尺。
 - [ ] 回填设计文档：四条修正（RTF 倒数、token 预算可算、参考音 16k、闸门 1 双侧归一化）；§11 删除「真实上限未知」。
