@@ -4,7 +4,9 @@
 
 VoxCPM2 渲染 + 音色锚点 + 两道自动闸门。它是个 CLI 工具，没有服务端、端口或常驻进程。
 
-## 启动
+## 渲染一篇
+
+新机器先走一遍下面的〈换机器〉，`house` 音色铸好之后才有这一步。
 
 ```bash
 cd ~/workspace/claude/voxout
@@ -31,25 +33,6 @@ $ uv run voxout render out/smoke.md --voice house -o out/smoke.wav
 产物是 48kHz / 单声道 / 16-bit PCM，旁边一份同名 `.manifest.json` 记下这次渲染的
 全部读数（覆盖率、漂移、耗时、token、峰值内存、模型与库版本）。
 
-### render 的参数
-
-| 参数 | 作用 |
-|---|---|
-| `--voice NAME` | 必填。音色名，例如 `house` |
-| `-o, --output PATH` | 输出 wav，默认 `out/<帖子名>.wav` |
-| `--force` | 内容闸门不过也产出音频，manifest 记 `forced=true` |
-| `--voice-root PATH` | 音色档案根目录，默认见下 |
-
-### 退出码
-
-这是它能进脚本的契约：
-
-| 码 | 含义 |
-|---|---|
-| `0` | 成功。音色闸门可能只是告警——它的判据是代理指标，不挡流程 |
-| `1` | 内容闸门不过。**预期内**的失败，看过差异报告后重跑或 `--force` |
-| `2` | 操作性错误：档案缺失、输入为空、权重没缓存。argparse 用法错误同码 |
-
 ## 两道闸门
 
 渲染完自动跑，判据与阈值的完整标定过程在 `src/voxout/config.py` 的常量文档里。
@@ -66,31 +49,44 @@ $ uv run voxout render out/smoke.md --voice house -o out/smoke.wav
 
 > 短标题被切成独立段落时，段间极差会很大（上例的 46.90% 来自 1.4 秒的标题段，
 > 三段 p10 F0 是 `[231.4, 153.8, 148.1]`）。这么短的音频上 p10 F0 基本是噪声，
-> 这也正是判据取中位数而非极差的原因。
+> 所以判据取中位数，不取极差。
 
-## 音色
+## render 的参数
 
-`house` 已经铸好，日常不用管这一步。音色档案默认在：
+| 参数 | 作用 |
+|---|---|
+| `--voice NAME` | 必填。音色名，例如 `house` |
+| `-o, --output PATH` | 输出 wav，默认 `out/<帖子名>.wav` |
+| `--force` | 内容闸门不过也产出音频，manifest 记 `forced=true` |
+| `--voice-root PATH` | 音色档案根目录，默认见〈音色档案〉 |
+
+## 退出码
+
+退出码是它能进脚本的契约。
+
+| 码 | 含义 |
+|---|---|
+| `0` | 成功。音色闸门可能只是告警——它的判据是代理指标，不挡流程 |
+| `1` | 内容闸门不过。**预期内**的失败，看过差异报告后重跑或 `--force` |
+| `2` | 操作性错误：档案缺失、输入为空、权重没缓存。argparse 用法错误同码 |
+
+## 音色档案
+
+`house` 已经铸好，日常不用管这一层。档案默认在：
 
 ```
-~/Life OS/60-69 Content Production/68 Writing Assets/voice/<音色名>/
     anchor.wav      锚点音频（48kHz）
     anchor.txt      锚点文本
     profile.toml    基线 p10 F0、种子、铸造时间
 ```
 
-新铸一个音色（**一生只铸一次**，此后所有渲染都对齐它）：
+退出码 2 的「档案缺失」指的就是这个目录少了文件，最常见的起因是 `--voice` 拼错。
 
-```bash
-uv run voxout mint-voice <音色名> --seed 42
-```
+## 换机器
 
-`--text` 可换锚点文本，但默认那句是设计 §4 全部探测的标定基准——换掉就要重新标定
-闸门 2 的标尺。`--seed` 不给则这次铸造不可复现。
+已配好的机器不需要任何安装步骤。换机器时按顺序走三步。
 
-## 环境
-
-已配好的机器不需要任何安装步骤。换机器时：
+**1. 装依赖**
 
 ```bash
 uv sync
@@ -99,7 +95,7 @@ uv sync
 需要 Python ≥ 3.12 与 [uv](https://docs.astral.sh/uv/)。依赖走清华镜像（`files.pythonhosted.org`
 在本机网络下会静默挂死，实测 29 分钟零进展，见 `pyproject.toml`）。
 
-### 模型权重
+**2. 拉模型权重**
 
 包默认离线（`HF_HUB_OFFLINE=1`，设在 `__init__.py`，必须早于任何 `huggingface_hub`
 导入），所以新机器第一次运行必然失败一次，并打印可直接粘贴的下载命令：
@@ -120,7 +116,15 @@ uv run python -c "from mlx_audio.stt.utils import load; \
   load('mlx-community/whisper-large-v3-turbo-asr-fp16')"
 ```
 
-拉完再 `uv run voxout mint-voice house --seed 42` 铸音色，就可以渲染了。
+**3. 铸音色**
+
+```bash
+uv run voxout mint-voice house --seed 42
+```
+
+一个音色一生只铸一次，此后所有渲染都对齐它。`--text` 可换锚点文本，但默认那句是
+设计 §4 全部探测的标定基准——换掉就要重新标定闸门 2 的标尺。`--seed` 不给则这次
+铸造不可复现。铸完就能渲染了。
 
 ## 开发
 
